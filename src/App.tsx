@@ -1,23 +1,59 @@
 import { useState } from 'react';
 import './App.css'
-import { getAllFrames } from './services'
+import { getAllFrameImages, getSVGFromURL, getTranslatedTextsForProject } from './services'
 
 function App() {
-  const [frames, setFrames] = useState([]);
+  const [frames, setFrames] = useState<string[]>([]);
   return (
     <>
       <button onClick={async () => {
-        const allnodes = await getAllFrames();
-        const frameUrls = allnodes.document.children[0].children.map((frame: any) => {
-          return `https://www.figma.com/file/9DBL4iFXsGEMz8NTlTtBQw?embed_host=share&kind=file&node-id=${frame.id.replace(":", "-")}&t=OCqaLDLCxOZv47zD-1&viewer=1`
+        const allnodes = await getAllFrameImages();
+        Object.keys(allnodes).forEach(async (key) => {
+          const imageUrl = allnodes[key];
+          const svg = await getSVGFromURL(imageUrl);
+          setFrames((prev) => [...prev, svg]);
         });
-        setFrames(frameUrls);
       }}>
         Get All frames
       </button>
+      {frames.length > 0 && <button onClick={async () => {
+        const translations = await getTranslatedTextsForProject(10);
+        const translatedFrames = frames.map((frame) => {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(frame, 'image/svg+xml');
+          const texts = doc.querySelectorAll('text');
+          texts.forEach((text) => {
+            const textArray: string[] = [];
+            const tspans = text.querySelectorAll('tspan');
+            tspans.forEach((tspan) => {
+              textArray.push(tspan.textContent ?? "");
+            });
+            const textId = text.getAttribute("data-node-id");
+            
+            
+            const transtatedText = translations.data.find((t:any)=>t.fieldId == textId).translatedText;
+            console.log(transtatedText);
+            
+            const chunkSize = Math.ceil(transtatedText.length / tspans.length);
+            const matchText = new RegExp(`.{1,${chunkSize}}(\\s|$)|\\S+`, 'g');
+            console.log(chunkSize);
+            
+            const translatedArray = transtatedText.match(matchText) ?? [];
+            console.log(translatedArray);
+            
+            tspans.forEach((tspan, index) => {
+              tspan.textContent = translatedArray[index];
+            });
+          });
+          return doc.documentElement.outerHTML;
+        });
+        // console.log(translatedFrames);
+
+        setFrames(translatedFrames);
+      }}>Toggle Language</button>}
       <div>
         {frames.map((frame, index) => (
-          <iframe key={index} src={frame} width="800" height="600" />
+          <div key={index} dangerouslySetInnerHTML={{ __html: frame }} />
         ))}
       </div>
     </>
